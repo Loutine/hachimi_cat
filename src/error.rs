@@ -6,6 +6,8 @@ pub enum Error {
     InputDeviceInitError,
     #[error("output device init error")]
     OutputDeviceInitError,
-    #[error("unsupported sample format")]
-    UnsupportedSampleFormat,
+    #[error("unsupported input sample format")]
+    UnsupportedInputSampleFormat,
+    #[error("unsupported output sample format")]
+    UnsupportedOutputSampleFormat,
 }

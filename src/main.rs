@@ -1,12 +1,17 @@
-use std::time::Duration;
+use std::{
+    // mem::{MaybeUninit, uninitialized},
+    time::Duration,
+};
 
 use cpal::{
-    self, SampleFormat, StreamConfig,
+    self, SampleFormat, SampleRate, StreamConfig,
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use ringbuf::{HeapRb, traits::*};
 
 use hachimi_cat::{audio_processing::audio_processing, constant::*, error};
+
+pub const TARGET_RATE: SampleRate = SampleRate(SAMPLE_RATE as u32);
 
 fn main() -> anyhow::Result<()> {
     let mic_buf = HeapRb::<f32>::new(RB_SIZE);
@@ -59,7 +64,7 @@ fn main() -> anyhow::Result<()> {
                 && config.channels() <= 1
         })
         .map(|config| config.with_sample_rate(TARGET_RATE))
-        .ok_or(error::Error::UnsupportedSampleFormat)?;
+        .ok_or(error::Error::UnsupportedInputSampleFormat)?;
 
     let input_config: StreamConfig = input_config.into();
 
@@ -75,7 +80,7 @@ fn main() -> anyhow::Result<()> {
                 && config.channels() <= 2
         })
         .map(|config| config.with_sample_rate(TARGET_RATE))
-        .ok_or(error::Error::UnsupportedSampleFormat)?;
+        .ok_or(error::Error::UnsupportedOutputSampleFormat)?;
 
     let output_config: StreamConfig = output_config.into();
 
@@ -91,6 +96,13 @@ fn main() -> anyhow::Result<()> {
     let output_stream = output_device.build_output_stream(
         &output_config,
         move |output, _| {
+            // let mut output_frame: [f32; FRAME_SIZE] =
+            // unsafe { MaybeUninit::uninit().assume_init() };
+            // loop {
+            // if processed_cons.occupied_len() >= FRAME_SIZE {
+            // processed_cons.pop_slice(&mut output_frame);
+
+            // for (idx, frame) in output.chunks_exact_mut(2).enumerate() {
             for frame in output.chunks_exact_mut(2) {
                 if let Some(sample) = processed_cons.try_pop() {
                     frame[0] = sample;
@@ -101,6 +113,8 @@ fn main() -> anyhow::Result<()> {
                     frame[1] = 0.0;
                 }
             }
+            // }
+            // }
         },
         |err| panic!("error: {:?}", err),
         None,
