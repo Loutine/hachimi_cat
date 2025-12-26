@@ -178,7 +178,7 @@ fn noiseless(
 fn sanitize(frame: &mut [f32]) {
     for x in frame.iter_mut() {
         let val = if x.is_finite() { *x } else { 0f32 };
-        *x = val.clamp(-0.9, 0.9);
+        *x = val.clamp(-1.0, 1.0);
     }
 }
 
