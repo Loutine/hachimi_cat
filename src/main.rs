@@ -116,8 +116,9 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     // mic input audio process thread
-    let _audio_process =
-        std::thread::spawn(move || audio_processing(mic_cons, far_end_cons, processed_prod));
+    let _audio_process = std::thread::Builder::new()
+        .name("Audio Pipeline Thread".to_owned())
+        .spawn(move || audio_processing(mic_cons, far_end_cons, processed_prod));
 
     input_stream.play()?;
     output_stream.play()?;
