@@ -30,6 +30,8 @@ cpal = "0.17.0"
 fdaf-aec = { git = "https://github.com/imlyzh/fdaf-aec" }
 nnnoiseless = "0.5.2"
 biquad = "0.5.0"
+rustfft = "6.4.1"
+num-complex = "0.4.6"
 
 [build-dependencies]
 uniffi = { version = "0.30.0", features = ["build"] }

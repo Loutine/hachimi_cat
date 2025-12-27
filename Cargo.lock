@@ -624,7 +624,9 @@ dependencies = [
  "cpal",
  "fdaf-aec",
  "nnnoiseless",
+ "num-complex",
  "ringbuf",
+ "rustfft",
  "thiserror 2.0.17",
  "uniffi",
 ]
