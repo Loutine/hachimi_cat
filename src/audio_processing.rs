@@ -12,6 +12,7 @@ use crate::{constant::*, limiter::SmoothLimiter, noise_gate::*};
 
 type BufProd = <LocalRb<Heap<f32>> as Split>::Prod;
 type BufCons = <LocalRb<Heap<f32>> as Split>::Cons;
+
 pub struct AudioProcessor {
     // IO
     mic_cons: HeapCons<f32>,
