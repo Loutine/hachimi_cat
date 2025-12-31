@@ -37,7 +37,7 @@ ringbuf = { workspace = true }
 cpal = { workspace = true }
 
 [profile.release]
-lto = "fat"
+lto = "thin"
 codegen-units = 1
 opt-level = 3
 strip = true

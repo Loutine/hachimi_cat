@@ -2,9 +2,12 @@ use std::str::FromStr;
 
 use bytes::Bytes;
 use clap::{Parser, Subcommand};
-use hacore::AudioEngine;
+use hacore::{AudioEngine, DecodeCommand};
 use iroh::{Endpoint, EndpointId, endpoint::Connection};
-use ringbuf::{HeapRb, traits::Split};
+use ringbuf::{
+    HeapRb,
+    traits::{Producer, Split},
+};
 use tokio::task::JoinHandle;
 
 #[derive(Parser)]
@@ -70,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
 
     for service in running_services {
         // TODO: safety close connection
+        // service.connection.close()
     }
 
     println!("Shutting down.");
@@ -86,8 +90,9 @@ pub struct AudioServices {
 impl AudioServices {
     async fn build(connection: Connection) -> anyhow::Result<Self> {
         let (local_prod, mut local_cons) = tokio::sync::mpsc::channel(100);
-        let remote_buf = HeapRb::new(4);
-        let (remote_prod, remote_cons) = remote_buf.split();
+        let (mut remote_prod, remote_cons) = HeapRb::new(4).split();
+
+        let ae = AudioEngine::build(local_prod, remote_cons)?;
 
         let conn_for_send = connection.clone();
         let conn_for_recv = connection.clone();
@@ -99,17 +104,20 @@ impl AudioServices {
             }
         });
 
+        let decode_process = ae.decode_process.clone();
+
         let reciver_thread = tokio::task::spawn(async move {
             loop {
-                let read_datagram = conn_for_recv.read_datagram().await.unwrap();
+                let frame = conn_for_recv.read_datagram().await.unwrap();
                 // TODO: decoding rtp frame
                 // TODO: jitter
-                // TODO: send to remote_prod
+                let _ = remote_prod.try_push(DecodeCommand::DecodeNormal(frame.to_vec()));
+                decode_process.thread().unpark();
             }
         });
 
         Ok(AudioServices {
-            ae: AudioEngine::build(local_prod, remote_cons)?,
+            ae,
             connection,
             sender_thread,
             reciver_thread,

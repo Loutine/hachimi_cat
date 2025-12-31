@@ -11,7 +11,7 @@ use libhachimi::{audio_processing::AudioProcessor, constant::*, error};
 pub struct AudioEngine {
     input_stream: Stream,
     output_stream: Stream,
-    decode_process: JoinHandle<()>,
+    pub decode_process: Arc<JoinHandle<()>>,
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +157,7 @@ impl AudioEngine {
                 }
             })
             .unwrap();
+        let decode_process = Arc::new(decode_process);
 
         let input_stream = input_device.build_input_stream(
             &input_config,
