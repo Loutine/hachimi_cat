@@ -107,8 +107,7 @@ impl AudioServices {
         let decode_process = ae.decode_process.clone();
 
         let reciver_thread = tokio::task::spawn(async move {
-            loop {
-                let frame = conn_for_recv.read_datagram().await.unwrap();
+            while let Ok(frame) = conn_for_recv.read_datagram().await {
                 // TODO: decoding rtp frame
                 // TODO: jitter
                 let _ = remote_prod.try_push(DecodeCommand::DecodeNormal(frame.to_vec()));

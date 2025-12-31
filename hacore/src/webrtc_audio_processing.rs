@@ -90,9 +90,6 @@ impl AudioProcessor {
             self.denoise.process_frame(&mut output_frame, &mic_frame);
 
             self.post_processor
-                .process_capture_frame(&mut ref_frame)
-                .unwrap();
-            self.post_processor
                 .process_capture_frame(&mut output_frame)
                 .unwrap();
 

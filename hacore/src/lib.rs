@@ -95,11 +95,11 @@ impl AudioEngine {
                         .unwrap();
                 encoder.set_bitrate(opus::Bitrate::Auto).unwrap();
 
-                let mut frame = [0f32; FRAME_SIZE];
+                let mut frame = [0f32; FRAME20MS];
                 let mut output = [0u8; 4096];
 
                 loop {
-                    while encoder_input.occupied_len() >= FRAME_SIZE {
+                    while encoder_input.occupied_len() >= FRAME20MS {
                         encoder_input.pop_slice(&mut frame);
                         let encode_size = encoder.encode_float(&frame, &mut output).unwrap();
                         let _ = encoder_output.try_send(output[..encode_size].to_vec());
@@ -140,10 +140,10 @@ impl AudioEngine {
                 let mut decoder = opus::Decoder::new(SAMPLE_RATE, opus::Channels::Mono).unwrap();
                 let mut decoder_input = decoder_input;
 
-                let mut frame = [0f32; FRAME_SIZE];
+                let mut frame = [0f32; FRAME20MS];
 
                 loop {
-                    if decoder_output.vacant_len() >= FRAME_SIZE {
+                    if decoder_output.vacant_len() >= FRAME20MS {
                         let decode_size = match decoder_input.try_pop() {
                             Some(DecodeCommand::DecodeNormal(packet)) => {
                                 decoder.decode_float(&packet, &mut frame, false).unwrap()
