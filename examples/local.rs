@@ -87,11 +87,19 @@ fn main() -> anyhow::Result<()> {
     // mic input audio process thread
     let _audio_process = std::thread::Builder::new()
         .name("Audio Pipeline Thread".to_owned())
-        .spawn(move || {
-            let mut filter =
-                AudioProcessor::new(mic_cons, processed_cons, processed_prod, speaker_prod);
+        .spawn(|| {
+            let mut filter = AudioProcessor::new();
+            let mut mic_cons = mic_cons;
+            let mut processed_cons = processed_cons;
+            let mut processed_prod = processed_prod;
+            let mut speaker_prod = speaker_prod;
             loop {
-                filter.process();
+                filter.process(
+                    &mut mic_cons,
+                    &mut processed_cons,
+                    &mut processed_prod,
+                    &mut speaker_prod,
+                );
                 // TODO: dynamic runtime modify
                 std::thread::sleep(Duration::from_millis(16));
             }

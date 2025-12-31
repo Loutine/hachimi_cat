@@ -14,12 +14,6 @@ type BufProd = <LocalRb<Heap<f32>> as Split>::Prod;
 type BufCons = <LocalRb<Heap<f32>> as Split>::Cons;
 
 pub struct AudioProcessor {
-    // IO
-    mic_cons: HeapCons<f32>,
-    ref_cons: HeapCons<f32>,
-    mic_prod: HeapProd<f32>,
-    ref_prod: HeapProd<f32>,
-
     // Singal Process State Machines
     ref_limiter: SmoothLimiter,
     noise_gate: VoipSoftGate,
@@ -58,12 +52,7 @@ pub struct AudioProcessor {
     nlp_cons: BufCons,
 }
 impl AudioProcessor {
-    pub fn new(
-        mic_cons: HeapCons<f32>,
-        ref_cons: HeapCons<f32>,
-        mic_prod: HeapProd<f32>,
-        ref_prod: HeapProd<f32>,
-    ) -> Self {
+    pub fn new() -> Self {
         let coeffs = Coefficients::<f32>::from_params(
             Type::HighPass,
             FILTER_SAMPLE.hz(),
@@ -108,10 +97,6 @@ impl AudioProcessor {
         let (nlp_prod, nlp_cons) = nlp_rb.split();
 
         Self {
-            mic_cons,
-            ref_cons,
-            mic_prod,
-            ref_prod,
             ref_limiter,
             noise_gate,
             aec_init_state: aec_state.clone(),
@@ -136,28 +121,26 @@ impl AudioProcessor {
         }
     }
 
-    pub fn process(&mut self) {
+    pub fn process(
+        &mut self,
+        mic_cons: &mut HeapCons<f32>,
+        ref_cons: &mut HeapCons<f32>,
+        mic_prod: &mut HeapProd<f32>,
+        ref_prod: &mut HeapProd<f32>,
+    ) {
         // pre process mic
-        hpf(
-            &mut self.mic_hpfilter,
-            &mut self.mic_cons,
-            &mut self.hpf_mic_prod,
-        );
+        hpf(&mut self.mic_hpfilter, mic_cons, &mut self.hpf_mic_prod);
         // pre process far end ref
-        limit(
-            &mut self.ref_limiter,
-            &mut self.ref_cons,
-            &mut self.ref_limit_prod,
-        );
+        limit(&mut self.ref_limiter, ref_cons, &mut self.ref_limit_prod);
 
         // ref dispatch
         while self.ref_limit_cons.occupied_len() >= FRAME_SIZE
-            && self.ref_prod.vacant_len() >= FRAME_SIZE
+            && ref_prod.vacant_len() >= FRAME_SIZE
             && self.hpf_ref_prod.vacant_len() >= FRAME_SIZE
         {
             let mut frame = [0f32; FRAME_SIZE];
             self.ref_limit_cons.pop_slice(&mut frame);
-            self.ref_prod.push_slice(&frame);
+            ref_prod.push_slice(&frame);
             self.dispatch_prod.push_slice(&frame);
         }
 
@@ -185,7 +168,7 @@ impl AudioProcessor {
             &mut self.nlp_prod,
         );
 
-        noiseless(&mut self.denoise, &mut self.nlp_cons, &mut self.mic_prod);
+        noiseless(&mut self.denoise, &mut self.nlp_cons, mic_prod);
     }
 }
 

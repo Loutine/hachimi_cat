@@ -99,6 +99,8 @@
                 extensions = [
                   "rust-src"
                   "rust-analyzer"
+                  "rustfmt"
+                  "clippy"
                 ];
                 targets = [
                   "wasm32-unknown-unknown"
