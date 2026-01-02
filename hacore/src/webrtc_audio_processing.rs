@@ -76,8 +76,8 @@ impl AudioProcessor {
         // ref dispatch
         while mic_cons.occupied_len() >= FRAME10MS
             && ref_cons.occupied_len() >= FRAME10MS
-            && mic_cons.vacant_len() >= FRAME10MS
-            && ref_cons.vacant_len() >= FRAME10MS
+            && mic_prod.vacant_len() >= FRAME10MS
+            && ref_prod.vacant_len() >= FRAME10MS
         {
             mic_cons.pop_slice(&mut mic_frame);
             ref_cons.pop_slice(&mut ref_frame);
