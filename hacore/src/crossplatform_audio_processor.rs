@@ -1,3 +1,4 @@
+use libhachimi::AudioProcessor;
 use nnnoiseless::DenoiseState;
 use ringbuf::{
     HeapCons, HeapProd,
@@ -10,14 +11,14 @@ use webrtc_audio_processing::{
 pub const FRAME10MS: usize = 480;
 pub const FRAME20MS: usize = 960;
 
-pub struct AudioProcessor {
+pub struct CrossPlatformAudioProcessor {
     // Singal Process State Machines
     pre_processor: Processor,
     post_processor: Processor,
     denoise: Box<DenoiseState<'static>>,
 }
 
-impl AudioProcessor {
+impl CrossPlatformAudioProcessor {
     pub fn build() -> anyhow::Result<Self> {
         let init_config = &InitializationConfig {
             num_capture_channels: 1,
@@ -62,8 +63,9 @@ impl AudioProcessor {
             denoise,
         })
     }
-
-    pub fn process(
+}
+impl AudioProcessor for CrossPlatformAudioProcessor {
+    fn process(
         &mut self,
         mic_cons: &mut HeapCons<f32>,
         ref_cons: &mut HeapCons<f32>,

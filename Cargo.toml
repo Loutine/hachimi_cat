@@ -3,8 +3,12 @@ name = "hachimi_cat"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "hacat"
+path = "src/main.rs"
+
 [workspace]
-members = ["libhachimi", "hacat", "hacore"]
+members = ["hacore", "libhachimi"]
 
 [workspace.dependencies]
 anyhow = "1.0.100"
@@ -15,13 +19,7 @@ ringbuf = "0.4.8"
 rand = "0.9.2"
 bytes = "1.11.0"
 
-clap = { version = "4.5.53", features = ["derive"] }
-
-opus = { version = "0.3.0", package = "opus" }
-cpal = "0.17.0"
 nnnoiseless = "0.5.2"
-webrtc-audio-processing = { version = "0.5.0", features = ["bundled"] }
-biquad = "0.5.0"
 
 tokio = "1.48.0"
 iroh = { version = "0.95.1", features = [
@@ -29,15 +27,20 @@ iroh = { version = "0.95.1", features = [
     "discovery-pkarr-dht",
 ] }
 
-
 [dependencies]
-libhachimi = { path = "./libhachimi" }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 # tracing = { workspace = true }
 ringbuf = { workspace = true }
 
-cpal = { workspace = true }
+rand = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true }
+iroh = { workspace = true }
+
+hacore = { path = "hacore" }
+
+clap = { version = "4.5.53", features = ["derive"] }
 
 [profile.release]
 lto = "thin"

@@ -9,9 +9,10 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 # tracing = { workspace = true }
 ringbuf = { workspace = true }
-cpal = { workspace = true }
-opus = { workspace = true }
 nnnoiseless = { workspace = true }
-biquad = { workspace = true }
 tokio = { workspace = true }
-webrtc-audio-processing = { workspace = true }
+webrtc-audio-processing = { version = "0.5.0", features = ["bundled"] }
+opus = "0.3.0"
+cpal = "0.17.0"
+
+# [target.'cfg(target_vendor = "apple")'.dependencies]

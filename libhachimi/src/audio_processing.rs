@@ -8,12 +8,14 @@ use ringbuf::{
     traits::{Consumer, Observer, Producer, Split},
 };
 
-use crate::{aec_guard::AecGuard, constant::*, limiter::SmoothLimiter, noise_gate::*};
+use crate::{
+    AudioProcessor, aec_guard::AecGuard, constant::*, limiter::SmoothLimiter, noise_gate::*,
+};
 
-pub type BufProd = <LocalRb<Heap<f32>> as Split>::Prod;
-pub type BufCons = <LocalRb<Heap<f32>> as Split>::Cons;
+type BufProd = <LocalRb<Heap<f32>> as Split>::Prod;
+type BufCons = <LocalRb<Heap<f32>> as Split>::Cons;
 
-pub struct AudioProcessor {
+pub struct CustomAudioProcessor {
     // Singal Process State Machines
     ref_limiter: SmoothLimiter,
     noise_gate: VoipSoftGate,
@@ -52,14 +54,8 @@ pub struct AudioProcessor {
     nlp_cons: BufCons,
 }
 
-impl Default for AudioProcessor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AudioProcessor {
-    pub fn new() -> Self {
+impl CustomAudioProcessor {
+    pub fn build() -> Self {
         let coeffs = Coefficients::<f32>::from_params(
             Type::HighPass,
             FILTER_SAMPLE.hz(),
@@ -125,8 +121,9 @@ impl AudioProcessor {
             nlp_cons,
         }
     }
-
-    pub fn process(
+}
+impl AudioProcessor for CustomAudioProcessor {
+    fn process(
         &mut self,
         mic_cons: &mut HeapCons<f32>,
         ref_cons: &mut HeapCons<f32>,

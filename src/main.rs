@@ -2,7 +2,10 @@ use std::str::FromStr;
 
 use bytes::Bytes;
 use clap::{Parser, Subcommand};
-use hacore::{AudioEngine, DecodeCommand, webrtc_audio_processing::FRAME10MS};
+use hacore::{
+    AudioEngine, DecodeCommand, EngineBuilder, crossplatform_audio_processor::FRAME10MS,
+    default_audio_engine::DefaultAudioEngine,
+};
 use iroh::{Endpoint, EndpointId, endpoint::Connection};
 use ringbuf::{
     HeapRb,
@@ -81,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 pub struct AudioServices {
-    pub ae: AudioEngine,
+    pub ae: Box<dyn AudioEngine>,
     pub connection: Connection,
     pub sender_thread: JoinHandle<()>,
     pub reciver_thread: JoinHandle<()>,
@@ -92,7 +95,7 @@ impl AudioServices {
         let (local_prod, mut local_cons) = tokio::sync::mpsc::channel(100);
         let (mut remote_prod, remote_cons) = HeapRb::new(FRAME10MS * 4).split();
 
-        let ae = AudioEngine::build(local_prod, remote_cons)?;
+        let ae = DefaultAudioEngine::build(local_prod, remote_cons)?;
 
         let conn_for_send = connection.clone();
         let conn_for_recv = connection.clone();
