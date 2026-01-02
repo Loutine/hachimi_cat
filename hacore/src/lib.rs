@@ -11,7 +11,7 @@ use ringbuf::{HeapCons, HeapRb, traits::*};
 // use libhachimi::audio_processing::AudioProcessor;
 use libhachimi::{constant::*, error};
 
-use crate::webrtc_audio_processing::{AudioProcessor, FRAME20MS};
+use crate::webrtc_audio_processing::{AudioProcessor, FRAME10MS, FRAME20MS};
 
 pub struct AudioEngine {
     input_stream: Stream,
@@ -95,11 +95,11 @@ impl AudioEngine {
                         .unwrap();
                 encoder.set_bitrate(opus::Bitrate::Auto).unwrap();
 
-                let mut frame = [0f32; FRAME20MS];
+                let mut frame = [0f32; FRAME10MS];
                 let mut output = [0u8; 4096];
 
                 loop {
-                    while encoder_input.occupied_len() >= FRAME20MS {
+                    while encoder_input.occupied_len() >= FRAME10MS {
                         encoder_input.pop_slice(&mut frame);
                         let encode_size = encoder.encode_float(&frame, &mut output).unwrap();
                         let _ = encoder_output.try_send(output[..encode_size].to_vec());
@@ -140,10 +140,10 @@ impl AudioEngine {
                 let mut decoder = opus::Decoder::new(SAMPLE_RATE, opus::Channels::Mono).unwrap();
                 let mut decoder_input = decoder_input;
 
-                let mut frame = [0f32; FRAME20MS];
+                let mut frame = [0f32; FRAME10MS];
 
                 loop {
-                    if decoder_output.vacant_len() >= FRAME20MS {
+                    if decoder_output.vacant_len() >= FRAME10MS {
                         let decode_size = match decoder_input.try_pop() {
                             Some(DecodeCommand::DecodeNormal(packet)) => {
                                 decoder.decode_float(&packet, &mut frame, false).unwrap()
@@ -158,7 +158,7 @@ impl AudioEngine {
                         decoder_output.push_slice(&frame[..decode_size]);
                         audio_process_0.thread().unpark();
                     }
-                    std::thread::park();
+                    std::thread::park_timeout(std::time::Duration::from_millis(10));
                 }
             })
             .unwrap();

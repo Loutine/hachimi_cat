@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use bytes::Bytes;
 use clap::{Parser, Subcommand};
-use hacore::{AudioEngine, DecodeCommand};
+use hacore::{AudioEngine, DecodeCommand, webrtc_audio_processing::FRAME10MS};
 use iroh::{Endpoint, EndpointId, endpoint::Connection};
 use ringbuf::{
     HeapRb,
@@ -90,7 +90,7 @@ pub struct AudioServices {
 impl AudioServices {
     async fn build(connection: Connection) -> anyhow::Result<Self> {
         let (local_prod, mut local_cons) = tokio::sync::mpsc::channel(100);
-        let (mut remote_prod, remote_cons) = HeapRb::new(4).split();
+        let (mut remote_prod, remote_cons) = HeapRb::new(FRAME10MS * 4).split();
 
         let ae = AudioEngine::build(local_prod, remote_cons)?;
 
