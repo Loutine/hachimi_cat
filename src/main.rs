@@ -1,9 +1,10 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 use bytes::Bytes;
 use clap::{Parser, Subcommand};
 use hacore::{
-    AudioEngine, DecodeCommand, EngineBuilder, crossplatform_audio_processor::FRAME10MS,
+    AudioEngine, DecodeCommand, EngineBuilder, FRAME10MS,
+    apple_platform_audio_engine::ApplePlatformAudioEngine,
     default_audio_engine::DefaultAudioEngine,
 };
 use iroh::{Endpoint, EndpointId, endpoint::Connection};
@@ -84,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 pub struct AudioServices {
-    pub ae: Box<dyn AudioEngine>,
+    pub ae: Arc<dyn AudioEngine>,
     pub connection: Connection,
     pub sender_thread: JoinHandle<()>,
     pub reciver_thread: JoinHandle<()>,
@@ -93,9 +94,14 @@ pub struct AudioServices {
 impl AudioServices {
     async fn build(connection: Connection) -> anyhow::Result<Self> {
         let (local_prod, mut local_cons) = tokio::sync::mpsc::channel(100);
-        let (mut remote_prod, remote_cons) = HeapRb::new(FRAME10MS * 4).split();
+        let (mut remote_prod, remote_cons) = HeapRb::new(FRAME10MS * 10).split();
 
-        let ae = DefaultAudioEngine::build(local_prod, remote_cons)?;
+        let ae: Arc<dyn AudioEngine> = if cfg!(target_vendor = "apple") {
+            ApplePlatformAudioEngine::build(local_prod, remote_cons)?
+        } else {
+            DefaultAudioEngine::build(local_prod, remote_cons)?
+        };
+        let decoder_thread = ae.get_decoder_thread();
 
         let conn_for_send = connection.clone();
         let conn_for_recv = connection.clone();
@@ -107,14 +113,13 @@ impl AudioServices {
             }
         });
 
-        let decode_process = ae.decode_process.clone();
-
         let reciver_thread = tokio::task::spawn(async move {
+            // let ae1 = ae1.clone();
             while let Ok(frame) = conn_for_recv.read_datagram().await {
                 // TODO: decoding rtp frame
                 // TODO: jitter
                 let _ = remote_prod.try_push(DecodeCommand::DecodeNormal(frame.to_vec()));
-                decode_process.thread().unpark();
+                decoder_thread.thread().unpark();
             }
         });
 

@@ -1,17 +1,18 @@
 use std::{sync::Arc, thread::JoinHandle};
 
-use cpal::{
-    self, SampleFormat, Stream, StreamConfig,
-    traits::{DeviceTrait, HostTrait, StreamTrait},
-};
 use ringbuf::{HeapCons, HeapRb, traits::*};
 
 // use libhachimi::audio_processing::AudioProcessor;
 use libhachimi::{AudioProcessor, constant::*, error};
 
 use crate::{
-    AudioEngine, DecodeCommand, EngineBuilder,
-    crossplatform_audio_processor::{CrossPlatformAudioProcessor, FRAME10MS, FRAME20MS},
+    AudioEngine, DecodeCommand, EngineBuilder, FRAME10MS, FRAME20MS,
+    cross_platform_audio_processor::CrossPlatformAudioProcessor,
+};
+
+use cpal::{
+    self, SampleFormat, Stream, StreamConfig,
+    traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 
 pub struct DefaultAudioEngine {
@@ -21,10 +22,14 @@ pub struct DefaultAudioEngine {
 }
 
 impl EngineBuilder for DefaultAudioEngine {
+    /// # Safety
+    /// This function is **non-reentrant**. The caller must ensure that
+    /// no two threads enter this function simultaneously.
+    /// TODO: Rewrite this function.
     fn build(
         encoder_output: tokio::sync::mpsc::Sender<Vec<u8>>,
         decoder_input: HeapCons<DecodeCommand>,
-    ) -> anyhow::Result<Box<Self>> {
+    ) -> anyhow::Result<Arc<Self>> {
         // config
 
         let host = cpal::default_host();
@@ -194,7 +199,7 @@ impl EngineBuilder for DefaultAudioEngine {
 
         println!("Audio system running. Channels: {}", output_channels);
 
-        Ok(Box::new(DefaultAudioEngine {
+        Ok(Arc::new(DefaultAudioEngine {
             decode_process,
             input_stream,
             output_stream,
@@ -203,28 +208,31 @@ impl EngineBuilder for DefaultAudioEngine {
 }
 
 impl AudioEngine for DefaultAudioEngine {
-    fn notify_decoder(&self) {
-        self.decode_process.thread().unpark();
+    // fn notify_decoder(&self) {
+    //     self.decode_process.thread().unpark();
+    // }
+    fn get_decoder_thread(&self) -> Arc<JoinHandle<()>> {
+        self.decode_process.clone()
     }
 
-    fn play(&self) -> anyhow::Result<()> {
+    fn play(&mut self) -> anyhow::Result<()> {
         self.input_stream.play()?;
         self.output_stream.play()?;
         Ok(())
     }
 
-    fn pause(&self) -> anyhow::Result<()> {
+    fn pause(&mut self) -> anyhow::Result<()> {
         self.input_stream.pause()?;
         self.output_stream.pause()?;
         Ok(())
     }
 
-    fn enable_mic(&self) -> anyhow::Result<()> {
+    fn enable_mic(&mut self) -> anyhow::Result<()> {
         self.input_stream.play()?;
         Ok(())
     }
 
-    fn disable_mic(&self) -> anyhow::Result<()> {
+    fn disable_mic(&mut self) -> anyhow::Result<()> {
         self.input_stream.pause()?;
         Ok(())
     }

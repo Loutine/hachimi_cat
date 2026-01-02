@@ -1,69 +1,68 @@
 use std::{sync::Arc, thread::JoinHandle};
 
-use cpal::{
-    self, SampleFormat, Stream, StreamConfig,
-    traits::{DeviceTrait, HostTrait, StreamTrait},
+use coreaudio::audio_unit::{
+    AudioUnit, IOType, Scope, StreamFormat,
+    audio_format::LinearPcmFlags,
+    render_callback::{Args, data::NonInterleaved},
 };
 use ringbuf::{HeapCons, HeapRb, traits::*};
 
 // use libhachimi::audio_processing::AudioProcessor;
-use libhachimi::{AudioProcessor, constant::*, error};
+use libhachimi::{AudioProcessor, constant::*};
 
 use crate::{
-    AudioEngine, DecodeCommand, EngineBuilder,
-    crossplatform_audio_processor::{CrossPlatformAudioProcessor, FRAME10MS, FRAME20MS},
+    AudioEngine, DecodeCommand, EngineBuilder, FRAME10MS, FRAME20MS,
+    apple_platform_audio_processor::ApplePlatformAudioProcessor,
 };
 
+// use coreaudio::audio_unit::
+
 pub struct ApplePlatformAudioEngine {
-    input_stream: Stream,
-    output_stream: Stream,
+    vpio_input_unit: AudioUnit,
+    vpio_output_unit: AudioUnit,
     pub decode_process: Arc<JoinHandle<()>>,
 }
 
+// FIXME
+unsafe impl Send for ApplePlatformAudioEngine {}
+unsafe impl Sync for ApplePlatformAudioEngine {}
+
 impl EngineBuilder for ApplePlatformAudioEngine {
+    /// # Safety
+    /// This function is **non-reentrant**. The caller must ensure that
+    /// no two threads enter this function simultaneously.
+    /// TODO: Rewrite this function.
     fn build(
         encoder_output: tokio::sync::mpsc::Sender<Vec<u8>>,
         decoder_input: HeapCons<DecodeCommand>,
-    ) -> anyhow::Result<Box<Self>> {
+    ) -> anyhow::Result<Arc<Self>> {
         // config
-
-        let host = cpal::default_host();
-
-        let input_device = host
-            .default_input_device()
-            .ok_or(error::Error::InputDeviceInitError)?;
-
-        let mut supported_input_configs = input_device.supported_input_configs()?;
-        let input_config = supported_input_configs
-            .find(|config| {
-                config.sample_format() == SampleFormat::F32
-                    && config.min_sample_rate() <= SAMPLE_RATE
-                    && config.max_sample_rate() >= SAMPLE_RATE
-                    && config.channels() == 1
-            })
-            .map(|config| config.with_sample_rate(SAMPLE_RATE))
-            .ok_or(error::Error::UnsupportedInputSampleFormat)?;
-
-        let input_config: StreamConfig = input_config.into();
-
-        let output_device = host
-            .default_output_device()
-            .ok_or(error::Error::OutputDeviceInitError)?;
-
-        let mut supported_output_configs = output_device.supported_output_configs()?;
-        let output_config = supported_output_configs
-            .find(|config| {
-                config.sample_format() == SampleFormat::F32
-                    && config.min_sample_rate() <= SAMPLE_RATE
-                    && config.max_sample_rate() >= SAMPLE_RATE
-                    && config.channels() <= 2
-            })
-            .map(|config| config.with_sample_rate(SAMPLE_RATE))
-            .ok_or(error::Error::UnsupportedOutputSampleFormat)?;
-
-        let output_config: StreamConfig = output_config.into();
-
-        let output_channels = output_config.channels as usize;
+        let mut vpio_input_unit = AudioUnit::new(IOType::VoiceProcessingIO)?;
+        let mut vpio_output_unit = AudioUnit::new(IOType::VoiceProcessingIO)?;
+        vpio_input_unit.set_stream_format(
+            StreamFormat {
+                sample_rate: 48000f64,
+                sample_format: coreaudio::audio_unit::SampleFormat::F32,
+                flags: LinearPcmFlags::IS_FLOAT
+                    | LinearPcmFlags::IS_PACKED
+                    | LinearPcmFlags::IS_NON_INTERLEAVED,
+                channels: 1,
+            },
+            Scope::Output,
+            coreaudio::audio_unit::Element::Input,
+        )?;
+        vpio_output_unit.set_stream_format(
+            StreamFormat {
+                sample_rate: 48000f64,
+                sample_format: coreaudio::audio_unit::SampleFormat::F32,
+                flags: LinearPcmFlags::IS_FLOAT
+                    | LinearPcmFlags::IS_PACKED
+                    | LinearPcmFlags::IS_NON_INTERLEAVED,
+                channels: 1,
+            },
+            Scope::Input,
+            coreaudio::audio_unit::Element::Output,
+        )?;
 
         // buffer init
 
@@ -109,7 +108,7 @@ impl EngineBuilder for ApplePlatformAudioEngine {
         let audio_process = std::thread::Builder::new()
             .name("Audio Pipeline Thread".to_owned())
             .spawn(move || {
-                let mut ap = CrossPlatformAudioProcessor::build().unwrap();
+                let mut ap = ApplePlatformAudioProcessor::build().unwrap();
                 let mut mic_cons = mic_cons;
                 let mut ap_ref_input = ap_ref_input;
                 let mut ap_mic_output = ap_mic_output;
@@ -161,71 +160,69 @@ impl EngineBuilder for ApplePlatformAudioEngine {
             .unwrap();
         let decode_process = Arc::new(decode_process);
 
-        let input_stream = input_device.build_input_stream(
-            &input_config,
-            move |data: &[f32], _| {
-                mic_prod.push_slice(data);
+        vpio_input_unit.set_input_callback(move |args: Args<NonInterleaved<f32>>| {
+            let Args { data, .. } = args;
+            for channel in data.channels() {
+                mic_prod.push_slice(channel);
                 audio_process_1.thread().unpark();
-            },
-            |err| panic!("input error: {:?}", err),
-            None,
-        )?;
+            }
+            Ok(())
+        })?;
 
-        let output_stream = output_device.build_output_stream(
-            &output_config,
-            move |output: &mut [f32], _| {
+        vpio_output_unit.set_render_callback(move |args: Args<NonInterleaved<f32>>| {
+            let Args { mut data, .. } = args;
+            for channel in data.channels_mut() {
                 // 只能象征性催一下
                 // audio_process_2.thread().unpark();
-                for frame in output.chunks_exact_mut(output_channels) {
-                    if let Some(sample) = speaker_cons.try_pop() {
-                        for channel_sample in frame.iter_mut() {
-                            *channel_sample = sample;
-                        }
-                    } else {
-                        for channel_sample in frame.iter_mut() {
-                            *channel_sample = 0.0;
-                        }
+                if let Some(sample) = speaker_cons.try_pop() {
+                    for channel_sample in channel.iter_mut() {
+                        *channel_sample = sample;
+                    }
+                } else {
+                    for channel_sample in channel.iter_mut() {
+                        *channel_sample = 0.0;
                     }
                 }
-            },
-            |err| panic!("output error: {:?}", err),
-            None,
-        )?;
+            }
+            Ok(())
+        })?;
 
-        println!("Audio system running. Channels: {}", output_channels);
-
-        Ok(Box::new(ApplePlatformAudioEngine {
+        Ok(Arc::new(ApplePlatformAudioEngine {
             decode_process,
-            input_stream,
-            output_stream,
+            vpio_input_unit,
+            vpio_output_unit,
         }))
     }
 }
 
 impl AudioEngine for ApplePlatformAudioEngine {
-    fn notify_decoder(&self) {
-        self.decode_process.thread().unpark();
+    // fn notify_decoder(&self) {
+    //     self.decode_process.thread().unpark();
+    // }
+    fn get_decoder_thread(&self) -> Arc<JoinHandle<()>> {
+        self.decode_process.clone()
     }
 
-    fn play(&self) -> anyhow::Result<()> {
-        self.input_stream.play()?;
-        self.output_stream.play()?;
+    fn play(&mut self) -> anyhow::Result<()> {
+        // reset pipelie ringbuffer
+        self.vpio_input_unit.start()?;
+        self.vpio_output_unit.start()?;
         Ok(())
     }
 
-    fn pause(&self) -> anyhow::Result<()> {
-        self.input_stream.pause()?;
-        self.output_stream.pause()?;
+    fn pause(&mut self) -> anyhow::Result<()> {
+        self.vpio_input_unit.stop()?;
+        self.vpio_output_unit.stop()?;
         Ok(())
     }
 
-    fn enable_mic(&self) -> anyhow::Result<()> {
-        self.input_stream.play()?;
+    fn enable_mic(&mut self) -> anyhow::Result<()> {
+        self.vpio_input_unit.start()?;
         Ok(())
     }
 
-    fn disable_mic(&self) -> anyhow::Result<()> {
-        self.input_stream.pause()?;
+    fn disable_mic(&mut self) -> anyhow::Result<()> {
+        self.vpio_input_unit.stop()?;
         Ok(())
     }
 }

@@ -8,8 +8,7 @@ use webrtc_audio_processing::{
     Config, EchoCancellation, GainControl, InitializationConfig, Processor,
 };
 
-pub const FRAME10MS: usize = 480;
-pub const FRAME20MS: usize = 960;
+use crate::FRAME10MS;
 
 pub struct CrossPlatformAudioProcessor {
     // Singal Process State Machines
@@ -27,27 +26,34 @@ impl CrossPlatformAudioProcessor {
             enable_intelligibility_enhancer: false,
         };
 
-        let mut pre_config = Config::default();
-        pre_config.echo_cancellation = Some(EchoCancellation {
-            suppression_level: webrtc_audio_processing::EchoCancellationSuppressionLevel::Moderate,
-            enable_extended_filter: true,
-            enable_delay_agnostic: true,
-            stream_delay_ms: None,
-        });
-        pre_config.enable_high_pass_filter = true;
-        pre_config.noise_suppression = None;
-        pre_config.gain_control = None;
+        let pre_config = Config {
+            echo_cancellation: Some(EchoCancellation {
+                suppression_level:
+                    webrtc_audio_processing::EchoCancellationSuppressionLevel::Moderate,
+                enable_extended_filter: true,
+                enable_delay_agnostic: true,
+                stream_delay_ms: None,
+            }),
+            gain_control: None,
+            noise_suppression: None,
+            voice_detection: None,
+            enable_transient_suppressor: false,
+            enable_high_pass_filter: true,
+        };
 
-        let mut post_config = Config::default();
-        post_config.echo_cancellation = None;
-        post_config.noise_suppression = None;
-        post_config.gain_control = Some(GainControl {
-            mode: webrtc_audio_processing::GainControlMode::AdaptiveDigital,
-            target_level_dbfs: 3,
-            compression_gain_db: 20,
-            enable_limiter: true,
-        });
-        // post_config.gain_control = None;
+        let post_config = Config {
+            echo_cancellation: None,
+            gain_control: Some(GainControl {
+                mode: webrtc_audio_processing::GainControlMode::AdaptiveDigital,
+                target_level_dbfs: 3,
+                compression_gain_db: 20,
+                enable_limiter: true,
+            }),
+            noise_suppression: None,
+            voice_detection: None,
+            enable_transient_suppressor: false,
+            enable_high_pass_filter: false,
+        };
 
         let mut pre_processor = Processor::new(init_config)?;
         pre_processor.set_config(pre_config);
@@ -75,7 +81,7 @@ impl AudioProcessor for CrossPlatformAudioProcessor {
         let mut mic_frame = [0f32; FRAME10MS];
         let mut ref_frame = [0f32; FRAME10MS];
         let mut output_frame = [0f32; FRAME10MS];
-        // ref dispatch
+
         while mic_cons.occupied_len() >= FRAME10MS
             && ref_cons.occupied_len() >= FRAME10MS
             && mic_prod.vacant_len() >= FRAME10MS

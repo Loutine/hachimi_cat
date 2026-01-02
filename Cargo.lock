@@ -1528,6 +1528,7 @@ name = "hacore"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "coreaudio-rs",
  "cpal",
  "libhachimi",
  "nnnoiseless",
