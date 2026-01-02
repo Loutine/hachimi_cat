@@ -197,7 +197,9 @@ impl EngineBuilder for DefaultAudioEngine {
             None,
         )?;
 
-        println!("Audio system running. Channels: {}", output_channels);
+        input_stream.play()?;
+        output_stream.play()?;
+        println!("Audio system running.");
 
         Ok(Arc::new(DefaultAudioEngine {
             decode_process,

@@ -187,6 +187,10 @@ impl EngineBuilder for ApplePlatformAudioEngine {
             Ok(())
         })?;
 
+        vpio_input_unit.start()?;
+        vpio_output_unit.start()?;
+        println!("Audio system running.");
+
         Ok(Arc::new(ApplePlatformAudioEngine {
             decode_process,
             vpio_input_unit,
