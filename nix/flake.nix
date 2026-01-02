@@ -54,12 +54,14 @@
         let
           inherit (pkgs) lib stdenv;
 
-  cmake-compat = pkgs.writeShellScriptBin "cmake" ''
-    exec ${pkgs.cmake}/bin/cmake \
-      -DCMAKE_POLICY_DEFAULT_CMP0000=OLD \
-      -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-      "$@"
-  '';
+          llvm = pkgs.llvmPackages_19;
+
+  # cmake-compat = pkgs.writeShellScriptBin "cmake" ''
+  #   exec ${pkgs.cmake}/bin/cmake \
+  #     -DCMAKE_POLICY_DEFAULT_CMP0000=OLD \
+  #     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  #     "$@"
+  # '';
         in {
           # 1. 这里覆盖当前系统的 pkgs，注入 rust-overlay
           # 这样在下面的 packages 列表中就可以直接使用 pkgs.rust-bin 了
@@ -78,7 +80,8 @@
               pkgs.lib.mkIf (devenvRootFileContent != "") devenvRootFileContent;
 
             # 3. 环境变量设置 (可选)
-            # env.RUST_SRC_PATH = "${pkgs.rust-bin.stable.latest.default}/lib/rustlib/src/rust/library";
+            env.RUST_SRC_PATH = "${pkgs.rust-bin.stable.latest.default}/lib/rustlib/src/rust/library";
+            env.LIBCLANG_PATH = "${llvm.libclang.lib}/lib";
 
             # 4. 软件包列表 (对应原 mkShell 的 buildInputs)
             packages = [
@@ -117,6 +120,7 @@
               pkgs.autoconf
               pkgs.automake
               pkgs.cmake
+              llvm.libclang
               # cmake-compat
               pkgs.webrtc-audio-processing
               pkgs.libopus
