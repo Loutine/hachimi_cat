@@ -92,14 +92,16 @@ impl AudioServices {
         let (local_prod, mut local_cons) = tokio::sync::mpsc::channel(100);
         let (mut remote_prod, remote_cons) = HeapRb::new(FRAME10MS * 10).split();
 
-        let ae: Arc<dyn AudioEngine> = if cfg!(target_vendor = "apple") {
+        #[cfg(not(target_vendor = "apple"))]
+        let ae: Arc<dyn AudioEngine> =
+            hacore::default_audio_engine::DefaultAudioEngine::build(local_prod, remote_cons)?;
+        #[cfg(target_vendor = "apple")]
+        let ae: Arc<dyn AudioEngine> =
             hacore::apple_platform_audio_engine::ApplePlatformAudioEngine::build(
                 local_prod,
                 remote_cons,
-            )?
-        } else {
-            hacore::default_audio_engine::DefaultAudioEngine::build(local_prod, remote_cons)?
-        };
+            )?;
+
         let decoder_thread = ae.get_decoder_thread();
 
         let conn_for_send = connection.clone();
