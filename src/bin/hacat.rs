@@ -90,7 +90,7 @@ pub struct AudioServices {
 
 impl AudioServices {
     fn build(connection: Connection) -> anyhow::Result<Self> {
-        let (send_data_prod, mut send_data_cons) = tokio::sync::mpsc::channel(8);
+        let (send_data_prod, mut send_data_cons) = tokio::sync::mpsc::channel(16);
         let (mut recv_data_prod, recv_data_cons) = HeapRb::new(FRAME20MS * 4).split();
 
         #[cfg(not(target_vendor = "apple"))]
