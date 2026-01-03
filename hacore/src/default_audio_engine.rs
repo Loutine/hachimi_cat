@@ -108,8 +108,7 @@ impl EngineBuilder for DefaultAudioEngine {
                     }
                     std::thread::park();
                 }
-            })
-            .unwrap();
+            })?;
 
         let audio_process = std::thread::Builder::new()
             .name("Audio Pipeline Thread".to_owned())
@@ -129,8 +128,7 @@ impl EngineBuilder for DefaultAudioEngine {
                     encode_process.thread().unpark();
                     std::thread::park();
                 }
-            })
-            .unwrap();
+            })?;
         let audio_process = Arc::new(audio_process);
         let audio_process_0 = audio_process.clone();
         let audio_process_1 = audio_process.clone();
@@ -162,8 +160,7 @@ impl EngineBuilder for DefaultAudioEngine {
                     }
                     std::thread::park_timeout(std::time::Duration::from_millis(10));
                 }
-            })
-            .unwrap();
+            })?;
         let decode_process = Arc::new(decode_process);
 
         let input_stream = input_device.build_input_stream(
