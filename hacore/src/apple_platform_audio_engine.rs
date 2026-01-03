@@ -27,6 +27,15 @@ pub struct ApplePlatformAudioEngine {
     pub decode_process: Arc<JoinHandle<()>>,
 }
 
+impl Drop for ApplePlatformAudioEngine {
+    fn drop(&mut self) {
+        let _ = self.vpio_unit.stop();
+        let _ = self.vpio_unit.uninitialize();
+        let _ = self.vpio_unit.free_input_callback();
+        let _ = self.vpio_unit.free_render_callback();
+    }
+}
+
 // FIXME
 unsafe impl Send for ApplePlatformAudioEngine {}
 unsafe impl Sync for ApplePlatformAudioEngine {}
