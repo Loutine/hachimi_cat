@@ -143,7 +143,7 @@ impl EngineBuilder for ApplePlatformAudioEngine {
         let audio_process = Arc::new(audio_process);
         let audio_process_0 = audio_process.clone();
         let audio_process_1 = audio_process.clone();
-        // let audio_process_2 = audio_process.clone();
+        let audio_process_2 = audio_process.clone();
 
         let decode_process = std::thread::Builder::new()
             .name("Audio Encoder Thread".to_owned())
@@ -169,7 +169,7 @@ impl EngineBuilder for ApplePlatformAudioEngine {
                         decoder_output.push_slice(&frame[..decode_size]);
                         audio_process_0.thread().unpark();
                     }
-                    std::thread::park_timeout(std::time::Duration::from_millis(10));
+                    std::thread::park();
                 }
             })
             .unwrap();
@@ -186,8 +186,7 @@ impl EngineBuilder for ApplePlatformAudioEngine {
 
         vpio_unit.set_render_callback(move |args: Args<NonInterleaved<f32>>| {
             let Args { mut data, .. } = args;
-            // 只能象征性催一下
-            // audio_process_2.thread().unpark();
+            audio_process_2.thread().unpark();
             // FIXME
             for channel in data.channels_mut() {
                 for channel_sample in channel.iter_mut() {

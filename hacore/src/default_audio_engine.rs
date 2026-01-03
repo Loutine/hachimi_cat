@@ -132,7 +132,7 @@ impl EngineBuilder for DefaultAudioEngine {
         let audio_process = Arc::new(audio_process);
         let audio_process_0 = audio_process.clone();
         let audio_process_1 = audio_process.clone();
-        // let audio_process_2 = audio_process.clone();
+        let audio_process_2 = audio_process.clone();
 
         let decode_process = std::thread::Builder::new()
             .name("Audio Encoder Thread".to_owned())
@@ -176,8 +176,7 @@ impl EngineBuilder for DefaultAudioEngine {
         let output_stream = output_device.build_output_stream(
             &output_config,
             move |output: &mut [f32], _| {
-                // 只能象征性催一下
-                // audio_process_2.thread().unpark();
+                audio_process_2.thread().unpark();
                 for frame in output.chunks_exact_mut(output_channels) {
                     if let Some(sample) = speaker_cons.try_pop() {
                         for channel_sample in frame.iter_mut() {
