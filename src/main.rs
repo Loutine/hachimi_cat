@@ -2,7 +2,6 @@ use std::{str::FromStr, sync::Arc};
 
 use bytes::Bytes;
 use clap::{Parser, Subcommand};
-#[cfg(target_vendor = "apple")]
 use hacore::EngineBuilder;
 use hacore::{AudioEngine, DecodeCommand, FRAME10MS};
 use iroh::{Endpoint, EndpointId, endpoint::Connection};
