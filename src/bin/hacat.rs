@@ -2,8 +2,8 @@ use std::{str::FromStr, sync::Arc};
 
 use bytes::Bytes;
 use clap::{Parser, Subcommand};
-use hacore::EngineBuilder;
-use hacore::{AudioEngine, DecodeCommand, FRAME10MS};
+use hacore::{AudioEngine, DecodeCommand};
+use hacore::{EngineBuilder, FRAME20MS};
 use iroh::{Endpoint, EndpointId, endpoint::Connection};
 use ringbuf::{
     HeapRb,
@@ -90,8 +90,8 @@ pub struct AudioServices {
 
 impl AudioServices {
     fn build(connection: Connection) -> anyhow::Result<Self> {
-        let (local_prod, mut local_cons) = tokio::sync::mpsc::channel(100);
-        let (mut remote_prod, remote_cons) = HeapRb::new(FRAME10MS * 10).split();
+        let (send_data_prod, mut send_data_cons) = tokio::sync::mpsc::channel(8);
+        let (mut recv_data_prod, recv_data_cons) = HeapRb::new(FRAME20MS * 4).split();
 
         #[cfg(not(target_vendor = "apple"))]
         let ae: Arc<dyn AudioEngine> =
@@ -99,8 +99,8 @@ impl AudioServices {
         #[cfg(target_vendor = "apple")]
         let ae: Arc<dyn AudioEngine> =
             hacore::apple_platform_audio_engine::ApplePlatformAudioEngine::build(
-                local_prod,
-                remote_cons,
+                send_data_prod,
+                recv_data_cons,
             )?;
 
         let decoder_thread = ae.get_decoder_thread();
@@ -109,7 +109,7 @@ impl AudioServices {
         let conn_for_recv = connection.clone();
 
         let sender_thread = tokio::task::spawn(async move {
-            while let Some(frame) = local_cons.recv().await {
+            while let Some(frame) = send_data_cons.recv().await {
                 // TODO: encoding rtp frame
                 conn_for_send.send_datagram(Bytes::from(frame)).unwrap();
             }
@@ -120,7 +120,7 @@ impl AudioServices {
             while let Ok(frame) = conn_for_recv.read_datagram().await {
                 // TODO: decoding rtp frame
                 // TODO: jitter
-                let _ = remote_prod.try_push(DecodeCommand::DecodeNormal(frame.to_vec()));
+                let _ = recv_data_prod.try_push(DecodeCommand::DecodeNormal(frame.to_vec()));
                 decoder_thread.thread().unpark();
             }
         });
