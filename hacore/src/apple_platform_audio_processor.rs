@@ -4,46 +4,46 @@ use ringbuf::{
     HeapCons, HeapProd,
     traits::{Consumer, Observer, Producer},
 };
-use webrtc_audio_processing::{Config, GainControl, InitializationConfig, Processor};
+// use webrtc_audio_processing::InitializationConfig;
 
 use crate::FRAME10MS;
 
 pub struct ApplePlatformAudioProcessor {
     // Singal Process State Machines
-    post_processor: Processor,
+    // post_processor: Processor,
     denoise: Box<DenoiseState<'static>>,
 }
 
 impl ApplePlatformAudioProcessor {
     pub fn build() -> anyhow::Result<Self> {
-        let init_config = &InitializationConfig {
-            num_capture_channels: 1,
-            num_render_channels: 1,
-            enable_experimental_agc: false,
-            enable_intelligibility_enhancer: false,
-        };
+        // let init_config = &InitializationConfig {
+        //     num_capture_channels: 1,
+        //     num_render_channels: 1,
+        //     enable_experimental_agc: false,
+        //     enable_intelligibility_enhancer: false,
+        // };
 
-        let post_config = Config {
-            echo_cancellation: None,
-            gain_control: Some(GainControl {
-                mode: webrtc_audio_processing::GainControlMode::AdaptiveDigital,
-                target_level_dbfs: 3,
-                compression_gain_db: 20,
-                enable_limiter: true,
-            }),
-            noise_suppression: None,
-            voice_detection: None,
-            enable_transient_suppressor: false,
-            enable_high_pass_filter: false,
-        };
+        // let post_config = Config {
+        //     echo_cancellation: None,
+        //     gain_control: Some(GainControl {
+        //         mode: webrtc_audio_processing::GainControlMode::AdaptiveDigital,
+        //         target_level_dbfs: 3,
+        //         compression_gain_db: 20,
+        //         enable_limiter: true,
+        //     }),
+        //     noise_suppression: None,
+        //     voice_detection: None,
+        //     enable_transient_suppressor: false,
+        //     enable_high_pass_filter: false,
+        // };
 
-        let mut post_processor = Processor::new(init_config)?;
-        post_processor.set_config(post_config);
+        // let mut post_processor = Processor::new(init_config)?;
+        // post_processor.set_config(post_config);
 
         let denoise = DenoiseState::new();
 
         Ok(Self {
-            post_processor,
+            // post_processor,
             denoise,
         })
     }
@@ -71,9 +71,9 @@ impl AudioProcessor for ApplePlatformAudioProcessor {
 
             self.denoise.process_frame(&mut output_frame, &mic_frame);
 
-            self.post_processor
-                .process_capture_frame(&mut output_frame)
-                .unwrap();
+            // self.post_processor
+            //     .process_capture_frame(&mut output_frame)
+            //     .unwrap();
 
             mic_prod.push_slice(&output_frame);
         }

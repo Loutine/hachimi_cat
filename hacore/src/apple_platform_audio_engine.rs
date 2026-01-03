@@ -11,9 +11,13 @@ use ringbuf::{HeapCons, HeapRb, traits::*};
 use libhachimi::{AudioProcessor, constant::*};
 
 use crate::{
-    AudioEngine, DecodeCommand, EngineBuilder, FRAME10MS, FRAME20MS,
+    AudioEngine,
+    DecodeCommand,
+    EngineBuilder,
+    FRAME10MS,
+    FRAME20MS,
     apple_platform_audio_processor::ApplePlatformAudioProcessor,
-    empty_audio_processor::EmptyAudioProcessor,
+    // empty_audio_processor::EmptyAudioProcessor,
 };
 
 // use coreaudio::audio_unit::
@@ -110,7 +114,7 @@ impl EngineBuilder for ApplePlatformAudioEngine {
         let audio_process = std::thread::Builder::new()
             .name("Audio Pipeline Thread".to_owned())
             .spawn(move || {
-                let mut ap = EmptyAudioProcessor::build().unwrap();
+                let mut ap = ApplePlatformAudioProcessor::build().unwrap();
                 let mut mic_cons = mic_cons;
                 let mut ap_ref_input = ap_ref_input;
                 let mut ap_mic_output = ap_mic_output;
