@@ -59,4 +59,16 @@ in
 
   env.LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
 
+  scripts = {
+    build-release = {
+      exec = ''
+        ${pkgs.cargo}/bin/cargo build --release
+      '';
+      };
+    run-release = {
+      exec = ''
+        ${pkgs.cargo}/bin/cargo run --bin=hacat --release -- "$@"
+      '';
+      };
+    };
 }
