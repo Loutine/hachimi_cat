@@ -205,6 +205,7 @@ pub fn limit(
     }
 }
 
+#[allow(clippy::unwrap_used)]
 pub fn aec(
     aec: &mut FdafAec<AEC_FFT_SIZE>,
     inited_aec: &FdafAec<AEC_FFT_SIZE>,

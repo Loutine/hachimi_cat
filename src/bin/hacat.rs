@@ -1,15 +1,15 @@
+use std::collections::HashMap;
 use std::{str::FromStr, sync::Arc};
 
 use bytes::Bytes;
 use clap::{Parser, Subcommand};
-use hacore::{AudioEngine, DecodeCommand};
+use hachimi_cat::{DecodeCommand, DecodedFrame, build_decoder, build_encoder, build_mixer};
+use hacore::AudioEngine;
 use hacore::{EngineBuilder, FRAME20MS};
 use iroh::{Endpoint, EndpointId, endpoint::Connection};
-use ringbuf::{
-    HeapRb,
-    traits::{Producer, Split},
-};
-use tokio::task::JoinHandle;
+use ringbuf::{HeapRb, traits::Split};
+use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 
 #[derive(Parser)]
 #[command(name = "hacat")]
@@ -35,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
 
     let alpns = vec![ALPN.to_vec()];
 
-    let mut running_services = vec![];
+    let mut audio_services = AudioServices::new()?;
 
     match cli.command {
         Commands::Listen => {
@@ -52,8 +52,7 @@ async fn main() -> anyhow::Result<()> {
                 let connecting = incoming.accept()?;
                 let connection = connecting.await?;
 
-                let audio_services = AudioServices::build(connection)?;
-                running_services.push(audio_services);
+                audio_services.add_connection(connection)?;
             }
         }
         Commands::Call { id } => {
@@ -65,8 +64,7 @@ async fn main() -> anyhow::Result<()> {
                 .await?;
             let connection = endpoint.connect(EndpointId::from_str(&id)?, ALPN).await?;
 
-            let audio_services = AudioServices::build(connection)?;
-            running_services.push(audio_services);
+            audio_services.add_connection(connection)?;
         }
     }
 
@@ -83,37 +81,71 @@ async fn main() -> anyhow::Result<()> {
 
 pub struct AudioServices {
     pub ae: Arc<dyn AudioEngine>,
+    send_data_cons: broadcast::Receiver<Bytes>,
+    decode_frame_prod: mpsc::Sender<DecodedFrame>,
+    pub mixer_thread: Arc<std::thread::JoinHandle<()>>,
+    connect_pair: HashMap<EndpointId, ConnectPair>,
+}
+
+pub struct ConnectPair {
     pub connection: Connection,
-    pub sender_thread: JoinHandle<()>,
-    pub reciver_thread: JoinHandle<()>,
+    pub sender_thread: tokio::task::JoinHandle<()>,
+    pub reciver_thread: tokio::task::JoinHandle<()>,
+    pub decoder_thread: std::thread::JoinHandle<()>,
 }
 
 impl AudioServices {
-    fn build(connection: Connection) -> anyhow::Result<Self> {
-        let (send_data_prod, mut send_data_cons) = tokio::sync::mpsc::channel(16);
-        let (mut recv_data_prod, recv_data_cons) = HeapRb::new(FRAME20MS * 4).split();
+    fn new() -> anyhow::Result<Self> {
+        let (ae_mic_output, encoder_input) = HeapRb::new(FRAME20MS * 2).split();
+        let (mixer_output, ae_ref_input) = HeapRb::new(FRAME20MS * 2).split();
+
+        let (send_data_prod, send_data_cons) = tokio::sync::broadcast::channel(2);
+        let encoder_thread = build_encoder(encoder_input, send_data_prod)?;
+
+        let (decode_frame_prod, mixer_input) = tokio::sync::mpsc::channel(2);
+        let mixer_thread = build_mixer(mixer_input, mixer_output)?;
+        let mixer_thread = Arc::new(mixer_thread);
 
         #[cfg(not(target_vendor = "apple"))]
         let ae: Arc<dyn AudioEngine> = hacore::default_audio_engine::DefaultAudioEngine::build(
-            send_data_prod,
-            recv_data_cons,
+            ae_mic_output,
+            ae_ref_input,
+            encoder_thread,
+            mixer_thread.clone(),
         )?;
         #[cfg(target_vendor = "apple")]
         let ae: Arc<dyn AudioEngine> =
             hacore::apple_platform_audio_engine::ApplePlatformAudioEngine::build(
-                send_data_prod,
-                recv_data_cons,
+                ae_mic_output,
+                ae_ref_input,
+                encoder_thread,
+                mixer_thread.clone(),
             )?;
 
-        let decoder_thread = ae.get_decoder_thread();
+        Ok(AudioServices {
+            ae,
+            connect_pair: HashMap::default(),
+            send_data_cons,
+            decode_frame_prod,
+            mixer_thread,
+        })
+    }
 
+    pub fn add_connection(&mut self, connection: Connection) -> anyhow::Result<()> {
         let conn_for_send = connection.clone();
         let conn_for_recv = connection.clone();
 
+        let (recv_data_prod, recv_data_cons) = tokio::sync::mpsc::channel(2);
+        let decoder_thread = build_decoder(recv_data_cons, self.decode_frame_prod.clone())?;
+        let mut send_data_cons = self.send_data_cons.resubscribe();
+
         let sender_thread = tokio::task::spawn(async move {
-            while let Some(frame) = send_data_cons.recv().await {
+            while let Ok(frame) = send_data_cons.recv().await {
                 // TODO: encoding rtp frame
-                conn_for_send.send_datagram(Bytes::from(frame)).unwrap();
+                if conn_for_send.send_datagram(frame).is_err() {
+                    // TODO: cancellization
+                    return;
+                }
             }
         });
 
@@ -122,16 +154,21 @@ impl AudioServices {
             while let Ok(frame) = conn_for_recv.read_datagram().await {
                 // TODO: decoding rtp frame
                 // TODO: jitter
-                let _ = recv_data_prod.try_push(DecodeCommand::DecodeNormal(frame.to_vec()));
-                decoder_thread.thread().unpark();
+                let _ = recv_data_prod
+                    .send(DecodeCommand::DecodeNormal(frame))
+                    .await;
             }
         });
 
-        Ok(AudioServices {
-            ae,
-            connection,
-            sender_thread,
-            reciver_thread,
-        })
+        self.connect_pair.insert(
+            connection.remote_id(),
+            ConnectPair {
+                connection,
+                sender_thread,
+                reciver_thread,
+                decoder_thread,
+            },
+        );
+        Ok(())
     }
 }

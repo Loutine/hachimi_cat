@@ -70,7 +70,9 @@ impl CrossPlatformAudioProcessor {
         })
     }
 }
+
 impl AudioProcessor for CrossPlatformAudioProcessor {
+    #[allow(clippy::unwrap_used)]
     fn process(
         &mut self,
         mic_cons: &mut HeapCons<f32>,

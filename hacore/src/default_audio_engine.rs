@@ -1,12 +1,12 @@
-use std::{sync::Arc, thread::JoinHandle};
+use std::sync::Arc;
 
-use ringbuf::{HeapCons, HeapRb, traits::*};
+use ringbuf::{HeapRb, traits::*};
 
 // use libhachimi::audio_processing::AudioProcessor;
 use libhachimi::{AudioProcessor, constant::*, error};
 
 use crate::{
-    AudioEngine, DecodeCommand, EngineBuilder, FRAME10MS, FRAME20MS,
+    AudioEngine, EngineBuilder, FRAME20MS,
     cross_platform_audio_processor::CrossPlatformAudioProcessor,
 };
 
@@ -18,7 +18,6 @@ use cpal::{
 pub struct DefaultAudioEngine {
     input_stream: Stream,
     output_stream: Stream,
-    pub decode_process: Arc<JoinHandle<()>>,
 }
 
 impl EngineBuilder for DefaultAudioEngine {
@@ -27,8 +26,10 @@ impl EngineBuilder for DefaultAudioEngine {
     /// no two threads enter this function simultaneously.
     /// TODO: Rewrite this function.
     fn build(
-        encoder_output: tokio::sync::mpsc::Sender<Vec<u8>>,
-        decoder_input: HeapCons<DecodeCommand>,
+        encoder_input: ringbuf::HeapProd<f32>,
+        decoder_output: ringbuf::HeapCons<f32>,
+        encode_thread: std::thread::JoinHandle<()>,
+        mixer_thread: Arc<std::thread::JoinHandle<()>>,
     ) -> anyhow::Result<Arc<Self>> {
         // config
 
@@ -78,96 +79,33 @@ impl EngineBuilder for DefaultAudioEngine {
         let speaker_buf = HeapRb::<f32>::new(FRAME20MS * 2);
         let (speaker_prod, mut speaker_cons) = speaker_buf.split();
 
-        let ap_to_encoder = HeapRb::<f32>::new(FRAME20MS * 2);
-        let (ap_mic_output, mut encoder_input) = ap_to_encoder.split();
-
-        let decoder_to_ap = HeapRb::<f32>::new(FRAME20MS * 2);
-        let (mut decoder_output, ap_ref_input) = decoder_to_ap.split();
-
         // start threads
-
-        let encode_process = std::thread::Builder::new()
-            .name("Audio Encoder Thread".to_owned())
-            .spawn(move || {
-                let mut encoder =
-                    opus::Encoder::new(SAMPLE_RATE, opus::Channels::Mono, opus::Application::Voip)
-                        .unwrap();
-                encoder.set_bitrate(opus::Bitrate::Auto).unwrap();
-                encoder.set_vbr(true).unwrap();
-                // encoder.set_inband_fec(true).unwrap();
-                // encoder.set_packet_loss_perc(0).unwrap();
-
-                let mut frame = [0f32; FRAME10MS];
-                let mut output = [0u8; 4096];
-
-                loop {
-                    while encoder_input.occupied_len() >= FRAME10MS {
-                        encoder_input.pop_slice(&mut frame);
-                        let encode_size = encoder.encode_float(&frame, &mut output).unwrap();
-                        let _ = encoder_output.try_send(output[..encode_size].to_vec());
-                    }
-                    std::thread::park();
-                }
-            })?;
 
         let audio_process = std::thread::Builder::new()
             .name("Audio Pipeline Thread".to_owned())
-            .spawn(move || {
-                let mut ap = CrossPlatformAudioProcessor::build().unwrap();
-                let mut mic_cons = mic_cons;
-                let mut ap_ref_input = ap_ref_input;
-                let mut ap_mic_output = ap_mic_output;
-                let mut speaker_prod = speaker_prod;
-                loop {
-                    ap.process(
-                        &mut mic_cons,
-                        &mut ap_ref_input,
-                        &mut ap_mic_output,
-                        &mut speaker_prod,
-                    );
-                    encode_process.thread().unpark();
-                    std::thread::park();
+            .spawn(|| {
+                if audiop(
+                    encoder_input,
+                    decoder_output,
+                    mic_cons,
+                    speaker_prod,
+                    encode_thread,
+                    mixer_thread,
+                )
+                .is_err()
+                {
+                    // cancellation
                 }
             })?;
         let audio_process = Arc::new(audio_process);
         let audio_process_0 = audio_process.clone();
         let audio_process_1 = audio_process.clone();
-        let audio_process_2 = audio_process.clone();
-
-        let decode_process = std::thread::Builder::new()
-            .name("Audio Encoder Thread".to_owned())
-            .spawn(move || {
-                let mut decoder = opus::Decoder::new(SAMPLE_RATE, opus::Channels::Mono).unwrap();
-                let mut decoder_input = decoder_input;
-
-                let mut frame = [0f32; FRAME10MS];
-
-                loop {
-                    if decoder_output.vacant_len() >= FRAME10MS {
-                        let decode_size = match decoder_input.try_pop() {
-                            Some(DecodeCommand::DecodeNormal(packet)) => {
-                                decoder.decode_float(&packet, &mut frame, false).unwrap()
-                            }
-                            Some(DecodeCommand::DecodeFEC(packet)) => {
-                                decoder.decode_float(&packet, &mut frame, true).unwrap()
-                            }
-                            Some(DecodeCommand::DecodePLC) | None => {
-                                decoder.decode_float(&[], &mut frame, false).unwrap()
-                            }
-                        };
-                        decoder_output.push_slice(&frame[..decode_size]);
-                        audio_process_0.thread().unpark();
-                    }
-                    std::thread::park_timeout(std::time::Duration::from_millis(10));
-                }
-            })?;
-        let decode_process = Arc::new(decode_process);
 
         let input_stream = input_device.build_input_stream(
             &input_config,
             move |data: &[f32], _| {
                 mic_prod.push_slice(data);
-                audio_process_1.thread().unpark();
+                audio_process_0.thread().unpark();
             },
             |err| panic!("input error: {:?}", err),
             None,
@@ -176,7 +114,7 @@ impl EngineBuilder for DefaultAudioEngine {
         let output_stream = output_device.build_output_stream(
             &output_config,
             move |output: &mut [f32], _| {
-                audio_process_2.thread().unpark();
+                audio_process_1.thread().unpark();
                 for frame in output.chunks_exact_mut(output_channels) {
                     if let Some(sample) = speaker_cons.try_pop() {
                         for channel_sample in frame.iter_mut() {
@@ -198,7 +136,6 @@ impl EngineBuilder for DefaultAudioEngine {
         println!("Audio system running.");
 
         Ok(Arc::new(DefaultAudioEngine {
-            decode_process,
             input_stream,
             output_stream,
         }))
@@ -206,13 +143,6 @@ impl EngineBuilder for DefaultAudioEngine {
 }
 
 impl AudioEngine for DefaultAudioEngine {
-    // fn notify_decoder(&self) {
-    //     self.decode_process.thread().unpark();
-    // }
-    fn get_decoder_thread(&self) -> Arc<JoinHandle<()>> {
-        self.decode_process.clone()
-    }
-
     fn play(&mut self) -> anyhow::Result<()> {
         self.input_stream.play()?;
         self.output_stream.play()?;
@@ -224,14 +154,28 @@ impl AudioEngine for DefaultAudioEngine {
         self.output_stream.pause()?;
         Ok(())
     }
+}
 
-    fn enable_mic(&mut self) -> anyhow::Result<()> {
-        self.input_stream.play()?;
-        Ok(())
-    }
-
-    fn disable_mic(&mut self) -> anyhow::Result<()> {
-        self.input_stream.pause()?;
-        Ok(())
+fn audiop(
+    encoder_input: ringbuf::HeapProd<f32>,
+    decoder_output: ringbuf::HeapCons<f32>,
+    mut mic_cons: ringbuf::HeapCons<f32>,
+    mut speaker_prod: ringbuf::HeapProd<f32>,
+    encode_thread: std::thread::JoinHandle<()>,
+    mixer_thread: Arc<std::thread::JoinHandle<()>>,
+) -> anyhow::Result<()> {
+    let mut ap = CrossPlatformAudioProcessor::build()?;
+    let mut ap_ref_input = decoder_output;
+    let mut ap_mic_output = encoder_input;
+    loop {
+        ap.process(
+            &mut mic_cons,
+            &mut ap_ref_input,
+            &mut ap_mic_output,
+            &mut speaker_prod,
+        );
+        encode_thread.thread().unpark();
+        mixer_thread.thread().unpark();
+        std::thread::park();
     }
 }
