@@ -83,22 +83,18 @@ impl EngineBuilder for DefaultAudioEngine {
 
         let audio_process = std::thread::Builder::new()
             .name("Audio Pipeline Thread".to_owned())
-            .spawn(move || {
-                let mut ap = CrossPlatformAudioProcessor::build().unwrap();
-                let mut mic_cons = mic_cons;
-                let mut ap_ref_input = decoder_output;
-                let mut ap_mic_output = encoder_input;
-                let mut speaker_prod = speaker_prod;
-                loop {
-                    ap.process(
-                        &mut mic_cons,
-                        &mut ap_ref_input,
-                        &mut ap_mic_output,
-                        &mut speaker_prod,
-                    );
-                    encode_thread.thread().unpark();
-                    mixer_thread.thread().unpark();
-                    std::thread::park();
+            .spawn(|| {
+                if audiop(
+                    encoder_input,
+                    decoder_output,
+                    mic_cons,
+                    speaker_prod,
+                    encode_thread,
+                    mixer_thread,
+                )
+                .is_err()
+                {
+                    // cancellation
                 }
             })?;
         let audio_process = Arc::new(audio_process);
@@ -157,5 +153,29 @@ impl AudioEngine for DefaultAudioEngine {
         self.input_stream.pause()?;
         self.output_stream.pause()?;
         Ok(())
+    }
+}
+
+fn audiop(
+    encoder_input: ringbuf::HeapProd<f32>,
+    decoder_output: ringbuf::HeapCons<f32>,
+    mut mic_cons: ringbuf::HeapCons<f32>,
+    mut speaker_prod: ringbuf::HeapProd<f32>,
+    encode_thread: std::thread::JoinHandle<()>,
+    mixer_thread: Arc<std::thread::JoinHandle<()>>,
+) -> anyhow::Result<()> {
+    let mut ap = CrossPlatformAudioProcessor::build()?;
+    let mut ap_ref_input = decoder_output;
+    let mut ap_mic_output = encoder_input;
+    loop {
+        ap.process(
+            &mut mic_cons,
+            &mut ap_ref_input,
+            &mut ap_mic_output,
+            &mut speaker_prod,
+        );
+        encode_thread.thread().unpark();
+        mixer_thread.thread().unpark();
+        std::thread::park();
     }
 }
