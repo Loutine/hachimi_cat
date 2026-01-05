@@ -73,11 +73,11 @@
             pkgs.glibtool
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
-            pkgs.libtool
-            pkgs.mold
             llvm.libclang
             llvm.libllvm
             llvm.clang
+            pkgs.libtool
+            pkgs.mold
             pkgs.alsa-lib.dev
           ];
 
@@ -106,11 +106,9 @@
           # # 解决符号过多报错
           # CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS = "-C link-arg=-Wl,--exclude-all-symbols";
 
-          shellHook = ''
-            echo "🚀 Build Environment Ready"
-            echo "   Host CMake: $(which cmake)"
-            echo "   Target: Windows (MinGW) & Local (macOS)"
-          '';
+          shellHook = pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+          export RUSTFLAGS="-C link-arg=-fuse-ld=mold"
+        '';
         };
       }
     );
