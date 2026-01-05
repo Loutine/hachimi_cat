@@ -15,21 +15,24 @@ impl AudioProcessor for EmptyAudioProcessor {
         mic_prod: &mut rtrb::Producer<f32>,
         ref_prod: &mut rtrb::Producer<f32>,
     ) {
-        while mic_cons.slots() >= FRAME10MS
-            && ref_cons.slots() >= FRAME10MS
-            && mic_prod.slots() >= FRAME10MS
-            && ref_prod.slots() >= FRAME10MS
-        {
-            let r = ref_cons.read_chunk(FRAME10MS).unwrap();
-            let mut w = ref_prod.write_chunk(FRAME10MS).unwrap();
-            w.as_mut_slices().0.copy_from_slice(r.as_slices().0);
-            r.commit_all();
-            w.commit_all();
-            let r = mic_cons.read_chunk(FRAME10MS).unwrap();
-            let mut w = mic_prod.write_chunk(FRAME10MS).unwrap();
-            w.as_mut_slices().0.copy_from_slice(r.as_slices().0);
-            r.commit_all();
-            w.commit_all();
+        while let (Ok(mic_cons), Ok(ref_cons), Ok(mut mic_prod), Ok(mut ref_prod)) = (
+            mic_cons.read_chunk(FRAME10MS),
+            ref_cons.read_chunk(FRAME10MS),
+            mic_prod.write_chunk(FRAME10MS),
+            ref_prod.write_chunk(FRAME10MS),
+        ) {
+            ref_prod
+                .as_mut_slices()
+                .0
+                .copy_from_slice(ref_cons.as_slices().0);
+            ref_cons.commit_all();
+            ref_prod.commit_all();
+            mic_prod
+                .as_mut_slices()
+                .0
+                .copy_from_slice(mic_cons.as_slices().0);
+            mic_cons.commit_all();
+            mic_prod.commit_all();
         }
     }
 }
