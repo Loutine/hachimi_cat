@@ -98,10 +98,10 @@ impl AudioServices {
         let (ae_mic_output, encoder_input) = rtrb::RingBuffer::new(FRAME20MS * 4);
         let (mixer_output, ae_ref_input) = rtrb::RingBuffer::new(FRAME20MS * 4);
 
-        let (send_data_prod, send_data_cons) = tokio::sync::broadcast::channel(2);
+        let (send_data_prod, send_data_cons) = tokio::sync::broadcast::channel(4);
         let encoder_thread = build_encoder(encoder_input, send_data_prod)?;
 
-        let (decode_frame_prod, mixer_input) = tokio::sync::mpsc::channel(2);
+        let (decode_frame_prod, mixer_input) = tokio::sync::mpsc::channel(4);
         let mixer_thread = build_mixer(mixer_input, mixer_output)?;
         let mixer_thread = Arc::new(mixer_thread);
 
