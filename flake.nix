@@ -65,8 +65,11 @@
             pkgsMinGW.binutils
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-            pkgs.libiconv
+            # pkgs.libiconv
             pkgs.glibtool
+          ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+            pkgs.alsa-lib
           ];
 
           # -----------------------------------------------------------
