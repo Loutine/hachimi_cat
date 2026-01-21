@@ -1,10 +1,4 @@
-use libhachimi::AudioProcessor;
-use ringbuf::{
-    HeapCons, HeapProd,
-    traits::{Consumer, Observer, Producer},
-};
-
-use crate::FRAME10MS;
+use crate::{AudioProcessor, FRAME10MS};
 
 pub struct EmptyAudioProcessor {}
 
@@ -16,23 +10,29 @@ impl EmptyAudioProcessor {
 impl AudioProcessor for EmptyAudioProcessor {
     fn process(
         &mut self,
-        mic_cons: &mut HeapCons<f32>,
-        ref_cons: &mut HeapCons<f32>,
-        mic_prod: &mut HeapProd<f32>,
-        ref_prod: &mut HeapProd<f32>,
+        mic_cons: &mut rtrb::Consumer<f32>,
+        ref_cons: &mut rtrb::Consumer<f32>,
+        mic_prod: &mut rtrb::Producer<f32>,
+        ref_prod: &mut rtrb::Producer<f32>,
     ) {
-        let mut mic_frame = [0f32; FRAME10MS];
-        let mut ref_frame = [0f32; FRAME10MS];
-
-        while mic_cons.occupied_len() >= FRAME10MS
-            && ref_cons.occupied_len() >= FRAME10MS
-            && mic_prod.vacant_len() >= FRAME10MS
-            && ref_prod.vacant_len() >= FRAME10MS
-        {
-            ref_cons.pop_slice(&mut ref_frame);
-            ref_prod.push_slice(&ref_frame);
-            mic_cons.pop_slice(&mut mic_frame);
-            mic_prod.push_slice(&mic_frame);
+        while let (Ok(mic_cons), Ok(ref_cons), Ok(mut mic_prod), Ok(mut ref_prod)) = (
+            mic_cons.read_chunk(FRAME10MS),
+            ref_cons.read_chunk(FRAME10MS),
+            mic_prod.write_chunk(FRAME10MS),
+            ref_prod.write_chunk(FRAME10MS),
+        ) {
+            ref_prod
+                .as_mut_slices()
+                .0
+                .copy_from_slice(ref_cons.as_slices().0);
+            ref_cons.commit_all();
+            ref_prod.commit_all();
+            mic_prod
+                .as_mut_slices()
+                .0
+                .copy_from_slice(mic_cons.as_slices().0);
+            mic_cons.commit_all();
+            mic_prod.commit_all();
         }
     }
 }

@@ -2,6 +2,16 @@
 
 An open-source voice calling and conferencing software that can be "low-cost and self-hosted".
 
+## TODO List (Wish List)
+
+1. [x] RingBuf换rtrb
+2. [ ] RTP协议封装，包括包id和端到端（采集）时间戳
+3. [ ] 实现Jitter
+   1. [ ] 包排序
+   2. [ ] Jitter内调用Decoder，操作Decoder完成FEC和PLC行为
+4. [ ] Mixter 混音器，拥有接受多个语音通道输入程度的能力
+5. [ ] 实时性配置，降低端到端延迟
+
 ## Run
 
 ### listen
